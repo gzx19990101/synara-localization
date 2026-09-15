@@ -1,6 +1,6 @@
 # Synara 汉化脚本
 
-English: [README.en.md](./README.en.md)
+[English](./README.en.md) | **简体中文**
 
 对 [Synara](https://github.com/Emanuele-web04/synara) 桌面应用（Electron）进行中文本地化的注入脚本，支持 macOS 与 Windows，app 更新后重复运行即可恢复汉化。
 
@@ -102,3 +102,7 @@ macOS 部分源自 [tttnny/synara-chinese-localization](https://github.com/tttnn
 - 若 Synara 在汉化之后自动更新过，建议从官方渠道重新安装，而不是用旧备份恢复
 - 少量动态字符串（如服务端返回的内容）无法通过静态替换汉化
 - 如遇问题，从官方渠道重新安装即可恢复原版
+
+## 其它语言
+
+目前提供简体中文与 English 两个版本。如需添加其它语言，可复制 `README.en.md` 为 `README.<语言代码>.md`，并在两个 README 顶部的语言栏中登记。

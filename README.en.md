@@ -1,8 +1,8 @@
 # Synara Chinese Localization
 
-Patch scripts that inject a Simplified Chinese localization into the [Synara](https://github.com/Emanuele-web04/synara) desktop app (Electron). Works on macOS and Windows; re-run after every app update to restore the localization.
+**English** | [简体中文](./README.md)
 
-Simplified Chinese: [README.md](./README.md)
+Patch scripts that inject a Simplified Chinese localization into the [Synara](https://github.com/Emanuele-web04/synara) desktop app (Electron). Works on macOS and Windows; re-run after every app update to restore the localization.
 
 The macOS part is based on [tttnny/synara-chinese-localization](https://github.com/tttnny/synara-chinese-localization), with Windows support, pre-compressed asset regeneration and a large set of additional UI translations added here.
 
@@ -102,3 +102,7 @@ Not translated on purpose: the long release notes in Settings → Advanced → R
 - If Synara auto-updated after you localized it, prefer reinstalling from the official source over restoring an outdated backup
 - A few dynamic strings (for example content returned by the server) cannot be localized by static replacement
 - If anything goes wrong, reinstall Synara from the official source to get a clean build back
+
+## Other languages
+
+Simplified Chinese and English are available today. To add another language, copy `README.en.md` to `README.<locale>.md` and register it in the language bar at the top of both files.
