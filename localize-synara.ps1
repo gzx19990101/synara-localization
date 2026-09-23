@@ -65,6 +65,26 @@ function Fail {
     exit 1
 }
 
+# Windows PowerShell 5.1 会把原生命令的 stderr 包装成 NativeCommandError，
+# 在 $ErrorActionPreference='Stop' 下会升级为终止错误，绕过脚本自身的错误处理。
+# 所有外部命令统一从这里调用：执行期间临时降低 EAP，正常捕获输出与退出码。
+function Invoke-Native {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList
+    )
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& $FilePath @ArgumentList 2>&1 | ForEach-Object { "$_" })
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
+}
+
 function Test-AppDir {
     param([string]$Dir)
     if (-not $Dir) { return $false }
@@ -199,7 +219,8 @@ function Remove-WorkDir {
     if (-not $Dir) { return }
     if (-not (Test-Path -LiteralPath $Dir)) { return }
     # 解包目录中存在超过 260 字符的路径，用 node 删除（Node 会自动使用 \\?\ 前缀）
-    & node -e 'require("fs").rmSync(process.argv[1], { recursive: true, force: true })' $Dir 2>&1 | Out-Null
+    # JS 字符串必须用单引号：Windows PowerShell 5.1 传参时会破坏内嵌双引号
+    $null = Invoke-Native 'node' @('-e', "require('fs').rmSync(process.argv[1], { recursive: true, force: true })", $Dir)
     if (Test-Path -LiteralPath $Dir) {
         Write-Detail "临时目录未能自动删除，请手动删除: $Dir"
     }
@@ -261,10 +282,21 @@ $extractDir = Join-Path $workDir 'extracted'
 New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
 Write-Detail "临时目录: $workDir"
 
-$extractOutput = & npx --yes "@electron/asar@$AsarVersion" extract $asarPath $extractDir 2>&1
-$extractExit = $LASTEXITCODE
+$extractResult = Invoke-Native 'npx' @('--yes', "@electron/asar@$AsarVersion", 'extract', $asarPath, $extractDir)
+$extractOutput = $extractResult.Output
+$extractExit = $extractResult.ExitCode
 if ($extractExit -ne 0) {
     Write-Detail "解包返回码 $extractExit，检查是否仅缺少当前架构不需要的文件..."
+    $skipped = @($extractOutput | Where-Object { $_ -match '^Error: (?!Unable to extract)' })
+    if ($skipped.Count -gt 0) {
+        Write-Detail "有 $($skipped.Count) 个文件未能解包（多为安装器裁剪的其它架构原生模块文件，不会进入新包）:"
+        foreach ($item in ($skipped | Select-Object -First 5)) {
+            $failedPath = [regex]::Match($item, "'([^']+)'").Groups[1].Value
+            if (-not $failedPath) { $failedPath = $item }
+            Write-Detail ('  - ' + ($failedPath -replace [regex]::Escape("$resourcesDir\"), ''))
+        }
+        if ($skipped.Count -gt 5) { Write-Detail "  ... 等共 $($skipped.Count) 个" }
+    }
 }
 
 $missing = @(Get-MissingPrimaryFiles -ExtractDir $extractDir)
@@ -300,8 +332,9 @@ else {
 # ---------------------------------------------------------------- 4. 汉化
 Write-Step 4 '应用汉化补丁'
 
-$patchOutput = & node $PatchScript $extractDir 2>&1
-$patchExit = $LASTEXITCODE
+$patchResult = Invoke-Native 'node' @($PatchScript, $extractDir)
+$patchOutput = $patchResult.Output
+$patchExit = $patchResult.ExitCode
 foreach ($line in $patchOutput) { Write-Detail $line }
 if ($patchExit -ne 0) {
     Remove-WorkDir $workDir
@@ -332,15 +365,17 @@ else {
 $tempAsar = Join-Path $workDir 'app.asar.new'
 $packArgs = @('--yes', "@electron/asar@$AsarVersion", 'pack', $extractDir, $tempAsar)
 if ($unpackGlob) { $packArgs += @('--unpack-dir', $unpackGlob) }
-$packOutput = & npx @packArgs 2>&1
-if ($LASTEXITCODE -ne 0) {
+$packResult = Invoke-Native 'npx' $packArgs
+$packOutput = $packResult.Output
+if ($packResult.ExitCode -ne 0) {
     foreach ($line in $packOutput) { Write-Detail $line }
     Remove-WorkDir $workDir
     Fail '重新打包失败，安装文件未被修改。'
 }
 
-$listOutput = @(& npx --yes "@electron/asar@$AsarVersion" list $tempAsar --is-pack 2>&1 | ForEach-Object { $_ -replace '\\', '/' })
-if ($LASTEXITCODE -ne 0) {
+$listResult = Invoke-Native 'npx' @('--yes', "@electron/asar@$AsarVersion", 'list', $tempAsar, '--is-pack')
+$listOutput = @($listResult.Output | ForEach-Object { $_ -replace '\\', '/' })
+if ($listResult.ExitCode -ne 0) {
     Remove-WorkDir $workDir
     Fail '无法读取打包结果，安装文件未被修改。'
 }
